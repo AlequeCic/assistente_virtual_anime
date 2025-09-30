@@ -627,7 +627,7 @@ MonoBehaviour:
   micDevice: 
   silenceThreshold: 0.01
   silenceTimeout: 3
-  webhookUrl: https://auto.intbin.com.br/webhook-test/base44
+  webhookUrl: https://auto.intbin.com.br/webhook/base44
   uLipSyncComponent: {fileID: 0}
 --- !u!82 &112477216
 AudioSource:
