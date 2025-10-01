@@ -616,7 +616,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 112477214}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2478e1156e93462428dd7d79597fd63a, type: 3}
   m_Name: 
@@ -627,7 +627,7 @@ MonoBehaviour:
   micDevice: 
   silenceThreshold: 0.01
   silenceTimeout: 3
-  webhookUrl: https://auto.intbin.com.br/webhook/base44
+  webhookUrl: https://auto.intbin.com.br/webhook-test/base44
   uLipSyncComponent: {fileID: 0}
 --- !u!82 &112477216
 AudioSource:
@@ -4020,6 +4020,7 @@ GameObject:
   - component: {fileID: 1251144464}
   - component: {fileID: 1251144463}
   - component: {fileID: 1251144458}
+  - component: {fileID: 1251144465}
   m_Layer: 0
   m_Name: CinemachineCamera
   m_TagString: Untagged
@@ -4183,6 +4184,23 @@ MonoBehaviour:
     RotationDamping: {x: 1, y: 1, z: 1}
     QuaternionDamping: 1
   FollowOffset: {x: 0, y: 1.47, z: -1.2}
+--- !u!114 &1251144465
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1251144457}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4caa02be1ebc9624d9425711529b17fb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mycam: {fileID: 1251144461}
+  sensitivity: 45.5
+  minzoom: 60
+  maxzoom: 20
+  smoothingFactor: 7
 --- !u!1001 &1272529701
 PrefabInstance:
   m_ObjectHideFlags: 0
