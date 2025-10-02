@@ -946,7 +946,9 @@ MonoBehaviour:
   micDevice: 
   silenceThreshold: 0.01
   silenceTimeout: 3
-  webhookUrl: https://auto.intbin.com.br/webhook/base44
+  minimumAudioLevel: 0.02
+  webhookUrl: https://autowebhook.intbin.com.br/webhook/adaturing
+  jwtToken: KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30
   uLipSyncComponent: {fileID: 0}
   characterObject: {fileID: 793993062}
 --- !u!82 &112477216

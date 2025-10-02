@@ -29,9 +29,13 @@ public class ConversationManager : MonoBehaviour
     [Header("Silence detection")]
     public float silenceThreshold = 0.01f;
     public float silenceTimeout = 3f;
+    public float minimumAudioLevel = 0.02f; // Nível mínimo para considerar como áudio válido
 
     [Header("Webhook")]
-    public string webhookUrl = "https://auto.intbin.com.br/webhook/base44";
+    public string webhookUrl = "https://autowebhook.intbin.com.br/webhook/adaturing";
+
+    [Header("JWT Authentication")]
+    public string jwtToken = "KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30";
 
     [Header("uLipSync Integration")]
     public uLipSync.uLipSync uLipSyncComponent;
@@ -48,6 +52,7 @@ public class ConversationManager : MonoBehaviour
     private AudioClip recordingClip;
     private bool isRecording = false;
     private float silenceTimer = 0f;
+    private bool hasDetectedAudio = false; // Flag para verificar se detectou áudio
 
     private void Start()
     {
@@ -169,7 +174,7 @@ public class ConversationManager : MonoBehaviour
                 return animator;
             }
 
-            Debug.LogWarning("⚠️ Objeto 'feira_2025' encontrado, mas não tem Animator");
+            Debug.LogWarning("⚠ Objeto 'feira_2025' encontrado, mas não tem Animator");
         }
         else
         {
@@ -464,7 +469,14 @@ public class ConversationManager : MonoBehaviour
 
         float avg = sum / samples.Length;
 
-        if (avg < silenceThreshold)
+        // 🔐 VERIFICA SE DETECTOU ÁUDIO VÁLIDO
+        if (avg >= minimumAudioLevel)
+        {
+            hasDetectedAudio = true;
+            silenceTimer = 0f;
+            Debug.Log($"🎙 Áudio detectado: {avg:F4}");
+        }
+        else if (hasDetectedAudio && avg < silenceThreshold)
         {
             silenceTimer += Time.deltaTime;
             if (silenceTimer >= silenceTimeout)
@@ -473,21 +485,54 @@ public class ConversationManager : MonoBehaviour
                 silenceTimer = 0f;
             }
         }
-        else
-        {
-            silenceTimer = 0f;
-        }
     }
 
     public void StartRecording()
     {
         if (isRecording) return;
         Debug.Log("🎤 Iniciando gravação...");
+
+        // 🔐 LIMPA CACHES ANTIGOS
+        ClearAudioCaches();
+
         recordingClip = Microphone.Start(micDevice, false, maxRecordTime, sampleRate);
         isRecording = true;
+        hasDetectedAudio = false; // Reseta a flag
         silenceTimer = 0f;
 
         ResetToNeutralAnimation();
+    }
+
+    /// <summary>
+    /// Limpa todos os caches de áudio anteriores
+    /// </summary>
+    private void ClearAudioCaches()
+    {
+        // Para a gravação atual se estiver ativa
+        if (Microphone.IsRecording(micDevice))
+        {
+            Microphone.End(micDevice);
+        }
+
+        // Destroi o AudioClip anterior se existir
+        if (recordingClip != null)
+        {
+            DestroyImmediate(recordingClip);
+            recordingClip = null;
+        }
+
+        // Para e limpa o AudioSource
+        if (audioSource.isPlaying)
+        {
+            audioSource.Stop();
+        }
+        audioSource.clip = null;
+
+        // Limpa cache do Unity
+        Resources.UnloadUnusedAssets();
+        System.GC.Collect();
+
+        Debug.Log("🗑 Caches de áudio limpos");
     }
 
     private void StopAndSend()
@@ -498,15 +543,33 @@ public class ConversationManager : MonoBehaviour
         Microphone.End(micDevice);
         isRecording = false;
 
-        if (pos <= 0)
+        // 🔐 VERIFICA SE REALMENTE TEVE ÁUDIO VÁLIDO
+        if (!hasDetectedAudio || pos <= 0)
         {
-            Debug.LogWarning("Nada foi gravado.");
+            Debug.LogWarning("🎙 Nenhum áudio válido detectado - Ignorando envio");
+            ClearAudioCaches();
             StartRecording();
             return;
         }
 
         float[] samples = new float[pos * recordingClip.channels];
         recordingClip.GetData(samples, 0);
+
+        // 🔐 VERIFICA SE O ÁUDIO TEM VOLUME SUFICIENTE
+        float totalVolume = 0f;
+        foreach (float sample in samples)
+        {
+            totalVolume += Mathf.Abs(sample);
+        }
+        float averageVolume = totalVolume / samples.Length;
+
+        if (averageVolume < minimumAudioLevel)
+        {
+            Debug.LogWarning($"🎙 Áudio muito fraco ({averageVolume:F4}) - Ignorando envio");
+            ClearAudioCaches();
+            StartRecording();
+            return;
+        }
 
         AudioClip trimmed = AudioClip.Create("trimmed", pos, recordingClip.channels, recordingClip.frequency, false);
         trimmed.SetData(samples, 0);
@@ -536,11 +599,34 @@ public class ConversationManager : MonoBehaviour
             www.downloadHandler = new DownloadHandlerBuffer();
             www.SetRequestHeader("Content-Type", "application/json");
 
+            // 🔐 AUTENTICAÇÃO JWT
+            if (!string.IsNullOrEmpty(jwtToken))
+            {
+                www.SetRequestHeader("Authorization", $"Bearer {jwtToken}");
+                Debug.Log($"🔐 Token JWT adicionado: {jwtToken.Substring(0, Math.Min(10, jwtToken.Length))}...");
+            }
+            else
+            {
+                Debug.LogError("❌ Token JWT não configurado!");
+                StartRecording();
+                yield break;
+            }
+
             yield return www.SendWebRequest();
+
+            // 🔐 LIMPA CACHES APÓS O ENVIO (sucesso ou erro)
+            ClearAudioCaches();
 
             if (www.result != UnityWebRequest.Result.Success)
             {
                 Debug.LogError($"❌ Erro na API: {www.error}");
+                Debug.Log($"📊 Status Code: {www.responseCode}");
+
+                if (www.downloadHandler != null && !string.IsNullOrEmpty(www.downloadHandler.text))
+                {
+                    Debug.Log($"📄 Resposta de erro: {www.downloadHandler.text}");
+                }
+
                 StartRecording();
             }
             else
@@ -573,7 +659,7 @@ public class ConversationManager : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("⚠️ Nenhum áudio retornado pela API");
+                    Debug.LogWarning("⚠ Nenhum áudio retornado pela API");
                     StartRecording();
                 }
             }
@@ -584,7 +670,7 @@ public class ConversationManager : MonoBehaviour
     {
         if (characterAnimator == null)
         {
-            Debug.LogWarning("⚠️ Animator não configurado");
+            Debug.LogWarning("⚠ Animator não configurado");
             return;
         }
 
@@ -607,13 +693,13 @@ public class ConversationManager : MonoBehaviour
                 ResetToNeutralAnimation();
                 break;
             default:
-                Debug.LogWarning($"⚠️ Animação desconhecida: {animationName}");
+                Debug.LogWarning($"⚠ Animação desconhecida: {animationName}");
                 ResetToNeutralAnimation();
                 break;
         }
     }
 
-    // ========== MÉTODOS DE ANIMAÇÃO CORRIGIDOS ==========
+    // ========== MÉTODOS DE ANIMAÇÃO ==========
 
     public void TriggerWaving()
     {
@@ -621,7 +707,6 @@ public class ConversationManager : MonoBehaviour
 
         try
         {
-            // Para Waving, apenas reseta os bools mas mantém o trigger
             characterAnimator.SetBool(IDLE_ARMS_BOOL, false);
             characterAnimator.SetBool(IDLE_SHY_BOOL, false);
             characterAnimator.SetTrigger(WAVING_TRIGGER);
@@ -639,7 +724,6 @@ public class ConversationManager : MonoBehaviour
 
         try
         {
-            // Para IdleArms, desativa Shy e ativa Arms
             characterAnimator.SetBool(IDLE_SHY_BOOL, false);
             characterAnimator.SetBool(IDLE_ARMS_BOOL, true);
             characterAnimator.ResetTrigger(WAVING_TRIGGER);
@@ -657,7 +741,6 @@ public class ConversationManager : MonoBehaviour
 
         try
         {
-            // Para IdleShy, desativa Arms e ativa Shy
             characterAnimator.SetBool(IDLE_ARMS_BOOL, false);
             characterAnimator.SetBool(IDLE_SHY_BOOL, true);
             characterAnimator.ResetTrigger(WAVING_TRIGGER);
@@ -703,7 +786,7 @@ public class ConversationManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogWarning($"⚠️ Não é WAV, tentando como MP3: {e.Message}");
+            Debug.LogWarning($"⚠ Não é WAV, tentando como MP3: {e.Message}");
             isWav = false;
         }
 
@@ -760,6 +843,11 @@ public class ConversationManager : MonoBehaviour
         yield return new WaitWhile(() => audioSource.isPlaying);
 
         Debug.Log("🎬 Fim da fala");
+
+        // 🔐 LIMPA CACHE APÓS REPRODUZIR
+        audioSource.clip = null;
+        Resources.UnloadUnusedAssets();
+
         yield return new WaitForSeconds(2f);
         ResetToNeutralAnimation();
         yield return new WaitForSeconds(0.5f);
@@ -800,6 +888,12 @@ public class ConversationManager : MonoBehaviour
         bool shy = characterAnimator.GetBool(IDLE_SHY_BOOL);
 
         Debug.Log($"🔍 Estado atual: {IDLE_ARMS_BOOL}={arms}, {IDLE_SHY_BOOL}={shy}");
+    }
+
+    [ContextMenu("🗑 Limpar Caches de Áudio")]
+    public void ClearAllAudioCaches()
+    {
+        ClearAudioCaches();
     }
 
     public void ForceStopAndSend() { if (isRecording) StopAndSend(); }
